@@ -1,0 +1,68 @@
+#!/bin/bash
+
+set -e  # Exit immediately if a command exits with a non-zero status.
+set -x  # All executed commands are printed to the terminal
+
+mv /tmp/boot /usr/local/boot
+
+export DEBIAN_FRONTEND=noninteractive
+
+echo "postfix postfix/main_mailer_type multiselect Internet Site" | debconf-set-selections
+echo "postfix postfix/mailname string example.com" | debconf-set-selections
+
+aptitude update ; aptitude install -y dovecot-imapd dovecot-lmtpd dovecot-pgsql dovecot-pop3d opendkim opendkim-tools postfix-pgsql
+
+# Copy Postfix config
+cp /tmp/postfix/main.cf /etc/postfix/
+cp /tmp/postfix/master.cf /etc/postfix/
+cp /tmp/postfix/virtual* /etc/postfix/
+
+# Restrict permissions to allow only its owner and the corresponding group
+chmod -R o-rwx /etc/postfix
+
+
+#############
+#  Dovecot  #
+#############
+
+# Create user vmail and set permissions
+groupadd -g 5000 vmail
+useradd -g vmail -u 5000 vmail -d /var/mail -s /bin/false
+mkdir -p /var/mail/vhosts/example.com
+chown -R vmail:vmail /var/mail
+chown -R vmail:dovecot /etc/dovecot
+chmod -R o-rwx /etc/dovecot
+
+# Configure Dovecot
+cp /tmp/dovecot/auth-sql.conf.ext /etc/dovecot/conf.d/
+cp /tmp/dovecot/10-master.conf /etc/dovecot/conf.d/
+sed -i "/^# Enable installed protocols/a protocols = imap pop3 lmtp" /etc/dovecot/dovecot.conf
+sed -i '/^mail_location = /c mail_location = maildir:\/var\/mail\/vhosts\/%d\/%n\/' /etc/dovecot/conf.d/10-mail.conf
+sed -i 's/^#disable_plaintext_auth/disable_plaintext_auth/' /etc/dovecot/conf.d/10-auth.conf
+sed -i '/^auth_mechanisms/c auth_mechanisms = plain login' /etc/dovecot/conf.d/10-auth.conf
+sed -i 's/^#!include auth-sql.conf.ext/!include auth-sql.conf.ext/' /etc/dovecot/conf.d/10-auth.conf
+sed -i '/^#driver = /c driver = pgsql' /etc/dovecot/dovecot-sql.conf.ext
+sed -i '/^#connect =/c connect = host=localhost dbname=mailserver user=mailuser password=mailpass' /etc/dovecot/dovecot-sql.conf.ext
+sed -i '/^#default_pass_scheme = /c default_pass_scheme = BLF-CRYPT' /etc/dovecot/dovecot-sql.conf.ext
+sed -E -i "0,/^#password_query/ s/^#password_query = .+/password_query = SELECT email as user, password FROM virtual_users WHERE email='%u';/" /etc/dovecot/dovecot-sql.conf.ext
+sed -i '/^ssl = yes$/c ssl = required' /etc/dovecot/conf.d/10-ssl.conf
+sed -i '/^ssl_cert = </c ssl_cert = </etc/letsencrypt/live/example.com/fullchain.pem' /etc/dovecot/conf.d/10-ssl.conf
+sed -i '/^ssl_key = </c ssl_key = </etc/letsencrypt/live/example.com/privkey.pem' /etc/dovecot/conf.d/10-ssl.conf
+
+# Configure OpenDKIM
+mkdir -p /etc/opendkim/keys/example.com
+cp /tmp/opendkim/* /etc/opendkim/
+cd /etc/opendkim/keys/example.com
+opendkim-genkey -s mail -d example.com
+chown opendkim:opendkim /etc/opendkim/keys/example.com/mail.private
+sed -i 's/^Socket/#Socket/' /etc/opendkim.conf
+sed -E -i '/^#Socket\s+inet/c Socket\t\t\tinet:12345@localhost' /etc/opendkim.conf
+sed -i 's/^#SOCKET=inet:12345@localhost/SOCKET=inet:12345@localhost/' /etc/default/opendkim
+echo -e "\nExternalIgnoreList refile:/etc/opendkim/TrustedHosts" >> /etc/opendkim.conf
+echo "InternalHosts refile:/etc/opendkim/TrustedHosts" >> /etc/opendkim.conf
+echo "KeyTable refile:/etc/opendkim/KeyTable" >> /etc/opendkim.conf
+echo "SigningTable refile:/etc/opendkim/SigningTable" >> /etc/opendkim.conf
+
+# Clean
+apt-get -y autoremove ; aptitude -y autoclean ; apt-get -y autoclean
+rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.aptitude

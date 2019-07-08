@@ -1,0 +1,10 @@
+#!/bin/bash
+
+export PGPASSWORD=postgres
+
+psql -h localhost -U postgres -d mailserver -c "INSERT INTO virtual_domains (name) VALUES ('example.com');"
+
+psql -h localhost -U postgres -d mailserver -c "INSERT INTO virtual_users (domain_id, password, email) VALUES (1, crypt('root', gen_salt('bf')), 'root@example.com');"
+
+psql -h localhost -U postgres -d mailserver -c "INSERT INTO virtual_aliases (domain_id, source, destination) VALUES (1, 'alias@example.com', 'root@example.com');"
+

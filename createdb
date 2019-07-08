@@ -1,0 +1,30 @@
+#!/bin/bash
+
+export PGPASSWORD=postgres
+
+psql -h localhost -U postgres -c "CREATE DATABASE mailserver;"
+psql -h localhost -U postgres -c "CREATE USER mailuser WITH ENCRYPTED PASSWORD 'mailpass';"
+psql -h localhost -U postgres -c "GRANT CONNECT ON DATABASE mailserver TO mailuser;"
+psql -h localhost -U postgres -d mailserver -c "GRANT USAGE ON SCHEMA public TO mailuser;"
+psql -h localhost -U postgres -d mailserver -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO mailuser;"
+psql -h localhost -U postgres -d mailserver -c "CREATE EXTENSION pgcrypto;"
+
+psql -h localhost -U postgres -d mailserver -c "CREATE TABLE virtual_domains (
+  id SMALLSERIAL PRIMARY KEY,
+  name TEXT NOT NULL
+);"
+
+psql -h localhost -U postgres -d mailserver -c "CREATE TABLE virtual_users (
+  id SERIAL PRIMARY KEY,
+  domain_id INTEGER NOT NULL REFERENCES virtual_domains(id) ON DELETE CASCADE,
+  password TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL
+);"
+
+psql -h localhost -U postgres -d mailserver -c "CREATE TABLE virtual_aliases (
+  id SERIAL PRIMARY KEY,
+  domain_id INTEGER NOT NULL REFERENCES virtual_domains(id) ON DELETE CASCADE,
+  source text NOT NULL,
+  destination text NOT NULL
+);"
+
