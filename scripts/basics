@@ -10,7 +10,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo "postfix postfix/main_mailer_type multiselect Internet Site" | debconf-set-selections
 echo "postfix postfix/mailname string example.com" | debconf-set-selections
 
-aptitude update ; aptitude install -y dovecot-imapd dovecot-lmtpd dovecot-pgsql dovecot-pop3d opendkim opendkim-tools postfix-pgsql
+aptitude update ; aptitude install -y dovecot-imapd dovecot-lmtpd dovecot-pgsql dovecot-pop3d opendkim opendkim-tools postfix-pgsql spamassassin spamc
 
 # Copy Postfix config
 cp /tmp/postfix/main.cf /etc/postfix/
@@ -62,6 +62,20 @@ echo -e "\nExternalIgnoreList refile:/etc/opendkim/TrustedHosts" >> /etc/opendki
 echo "InternalHosts refile:/etc/opendkim/TrustedHosts" >> /etc/opendkim.conf
 echo "KeyTable refile:/etc/opendkim/KeyTable" >> /etc/opendkim.conf
 echo "SigningTable refile:/etc/opendkim/SigningTable" >> /etc/opendkim.conf
+
+# Configure SpamAssassin
+groupadd -g 5555 spamd
+useradd -g spamd -u 5555 spamd -d /usr/local/spamassassin -s /bin/false
+mkdir -p /usr/local/spamassassin
+chown spamd:spamd -R /usr/local/spamassassin
+
+sed -i 's/^# rewrite_header/rewrite_header/' /etc/spamassassin/local.cf
+sed -i 's/^# required_score/required_score/' /etc/spamassassin/local.cf
+sed -i 's/^# report_safe 1$/report_safe 0/' /etc/spamassassin/local.cf
+sed -i 's/^# use_bayes/use_bayes/' /etc/spamassassin/local.cf
+sed -i 's/^# bayes_auto_learn/bayes_auto_learn/' /etc/spamassassin/local.cf
+sed -i '/^OPTIONS=/c OPTIONS="--create-prefs --max-children 5 --username spamd --helper-home-dir /usr/local/spamassassin -s /usr/local/spamassassin/spamd.log"' /etc/default/spamassassin
+sed -i 's/^CRON=0$/CRON=1/' /etc/default/spamassassin
 
 # Clean
 apt-get -y autoremove ; aptitude -y autoclean ; apt-get -y autoclean

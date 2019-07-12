@@ -3,6 +3,7 @@
 set -e
 
 service cron start > /dev/null 2>&1
+service spamassassin start > /dev/null 2>&1
 service postfix start > /dev/null 2>&1
 service dovecot start > /dev/null 2>&1
 service opendkim start > /dev/null 2>&1
