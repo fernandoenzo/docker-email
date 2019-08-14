@@ -17,9 +17,6 @@ cp /tmp/postfix/main.cf /etc/postfix/
 cp /tmp/postfix/master.cf /etc/postfix/
 cp /tmp/postfix/virtual* /etc/postfix/
 
-# Restrict permissions to allow only its owner and the corresponding group
-chmod -R o-rwx /etc/postfix
-
 
 #############
 #  Dovecot  #
